@@ -1,0 +1,14 @@
+fn policy() {
+  yield "explore"
+}
+
+state initial = policy()
+state _ = debug(initial)
+
+at 10s {
+  rewrite policy => {
+    yield "exploit"
+  }
+  state later = policy()
+  state _ = debug(later)
+}
