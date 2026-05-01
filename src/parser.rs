@@ -166,20 +166,45 @@ impl<'a> Parser<'a> {
     }
     fn take_until_stmt_end(&mut self) -> Vec<Token> {
         let mut out = Vec::new();
+        let mut paren_depth = 0usize;
+        let mut brace_depth = 0usize;
+        let mut bracket_depth = 0usize;
         while !self.at_eof() {
-            if self.at(TokenKind::Semicolon) {
+            if self.at(TokenKind::Semicolon)
+                && paren_depth == 0
+                && brace_depth == 0
+                && bracket_depth == 0
+            {
                 out.push(self.bump().unwrap());
                 break;
             }
-            if self.looks_like_statement_boundary() {
+            if self.looks_like_statement_boundary(paren_depth, brace_depth, bracket_depth) {
                 break;
             }
-            out.push(self.bump().unwrap());
+            let next = self.bump().unwrap();
+            match next.kind {
+                TokenKind::LParen => paren_depth += 1,
+                TokenKind::RParen => paren_depth = paren_depth.saturating_sub(1),
+                TokenKind::LBrace => brace_depth += 1,
+                TokenKind::RBrace => brace_depth = brace_depth.saturating_sub(1),
+                TokenKind::LBracket => bracket_depth += 1,
+                TokenKind::RBracket => bracket_depth = bracket_depth.saturating_sub(1),
+                _ => {}
+            }
+            out.push(next);
         }
         out
     }
 
-    fn looks_like_statement_boundary(&self) -> bool {
+    fn looks_like_statement_boundary(
+        &self,
+        paren_depth: usize,
+        brace_depth: usize,
+        bracket_depth: usize,
+    ) -> bool {
+        if paren_depth != 0 || brace_depth != 0 || bracket_depth != 0 {
+            return false;
+        }
         matches!(
             self.peek_kind(),
             Some(TokenKind::Keyword(Keyword::State))

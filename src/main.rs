@@ -11,11 +11,17 @@ use parser::parse;
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
-        eprintln!("usage: tl2 [--dump-cst] <file.tlh>");
+        eprintln!("usage: tl2 [--dump-tokens|--dump-cst] <file.tlh>");
         process::exit(2);
     }
 
     let dump_cst = args.iter().any(|a| a == "--dump-cst");
+    let dump_tokens = args.iter().any(|a| a == "--dump-tokens");
+
+    if dump_cst && dump_tokens {
+        eprintln!("choose only one of --dump-tokens or --dump-cst");
+        process::exit(2);
+    }
     let path = args
         .iter()
         .find(|a| !a.starts_with("--"))
