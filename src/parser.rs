@@ -198,24 +198,69 @@ impl<'a> Parser<'a> {
         if !self.at_eof() {
             out.push(self.bump().unwrap());
         }
-        out.extend(self.take_until_stmt_end());
+        let start_line = out
+            .first()
+            .map(|t| t.span.line)
+            .unwrap_or(self.current_span().line);
+        out.extend(self.take_until_stmt_end(start_line));
         out
     }
-    fn take_until_stmt_end(&mut self) -> Vec<Token> {
+    fn take_until_stmt_end(&mut self, start_line: usize) -> Vec<Token> {
         let mut out = Vec::new();
+        let mut brace_depth = 0usize;
         while !self.at_eof() {
-            if self.at(TokenKind::Semicolon) {
+            if self.at(TokenKind::Semicolon) && brace_depth == 0 {
                 out.push(self.bump().unwrap());
                 break;
             }
-            if self.looks_like_statement_boundary() {
-                break;
+
+            if brace_depth == 0 {
+                if self.looks_like_statement_boundary() {
+                    break;
+                }
+                if let Some(tok) = self.tokens.get(self.i) {
+                    if tok.span.line > start_line && self.looks_like_line_start_statement() {
+                        break;
+                    }
+                }
             }
-            out.push(self.bump().unwrap());
+
+            let t = self.bump().unwrap();
+            match t.kind {
+                TokenKind::LBrace => brace_depth += 1,
+                TokenKind::RBrace => {
+                    if brace_depth == 0 {
+                        break;
+                    }
+                    brace_depth -= 1;
+                }
+                _ => {}
+            }
+            out.push(t);
         }
         out
     }
 
+    fn looks_like_line_start_statement(&self) -> bool {
+        matches!(
+            self.peek_kind(),
+            Some(TokenKind::Identifier(_))
+                | Some(TokenKind::Keyword(Keyword::If))
+                | Some(TokenKind::Keyword(Keyword::While))
+                | Some(TokenKind::Keyword(Keyword::For))
+                | Some(TokenKind::Keyword(Keyword::Loop))
+                | Some(TokenKind::Keyword(Keyword::State))
+                | Some(TokenKind::Keyword(Keyword::Rewrite))
+                | Some(TokenKind::Keyword(Keyword::Send))
+                | Some(TokenKind::Keyword(Keyword::Receive))
+                | Some(TokenKind::Keyword(Keyword::Yield))
+                | Some(TokenKind::Keyword(Keyword::Observe))
+                | Some(TokenKind::Keyword(Keyword::Morph))
+                | Some(TokenKind::Keyword(Keyword::Spawn))
+                | Some(TokenKind::Keyword(Keyword::Grant))
+                | Some(TokenKind::Keyword(Keyword::Revoke))
+        )
+    }
     fn looks_like_statement_boundary(&self) -> bool {
         matches!(
             self.peek_kind(),

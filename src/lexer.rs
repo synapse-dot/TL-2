@@ -193,7 +193,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        let snapshot = self.pos;
+        let snapshot = (self.pos, self.line, self.col);
         if let Some(unit) = self.match_time_unit() {
             return self.finish(
                 start,
@@ -203,7 +203,9 @@ impl<'a> Lexer<'a> {
                 },
             );
         }
-        self.pos = snapshot;
+        self.pos = snapshot.0;
+        self.line = snapshot.1;
+        self.col = snapshot.2;
 
         self.finish(start, TokenKind::Number(number))
     }
