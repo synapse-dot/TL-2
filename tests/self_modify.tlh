@@ -1,0 +1,14 @@
+fn policy() {
+  yield "explore"
+}
+
+let initial = policy();
+debug(initial);
+
+at 10s {
+  rewrite policy => {
+    yield "exploit"
+  }
+  let later = policy();
+  debug(later);
+}
