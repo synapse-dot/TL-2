@@ -1,0 +1,95 @@
+// Temporal conflict conformance cases.
+// Expected outcomes are normative assertions for runtime test harnesses.
+// Harness metadata convention (not TLH syntax):
+//   @policy: error | priority | lww
+//   @writer: <id>
+//   @priority: <number>
+
+// CASE 1: overlap policy = error
+// @policy: error
+// EXPECT: transaction fails with overlap conflict; `balance` remains 0.
+state balance = 0
+at 10ms {
+  rewrite balance => 1
+  rewrite balance => 2
+  commit "overlap-error"
+}
+
+// CASE 2: overlap policy = priority
+// @policy: priority
+// @writer: sync @priority: 10
+// @writer: ops  @priority: 20
+// EXPECT: final `quota` == 200 (ops wins overlap).
+state quota = 0
+at 20ms {
+  rewrite quota => 100   // writer: sync
+  rewrite quota => 200   // writer: ops
+  commit "overlap-priority"
+}
+
+// CASE 3: overlap policy = lww
+// @policy: lww
+// ASSUME deterministic journal ordering by (logical_time, phase, tx, stmt_index, writer_id, writer_seq).
+// EXPECT: final `mode` == "B" because stmt_index(2) > stmt_index(1).
+state mode = "init"
+at 30ms {
+  rewrite mode => "A"
+  rewrite mode => "B"
+  commit "overlap-lww"
+}
+
+// CASE 4: same-timestamp phase ordering
+// EXPECT order:
+//   1) at-enter
+//   2) rewrite x => 1
+//   3) send x
+//   4) commit
+// EXPECT sent payload is 1.
+state x = 0
+at 40ms {
+  rewrite x => 1
+  send x to outbox
+  commit "phase-order"
+}
+
+// CASE 5: atomic multi-statement block rollback
+// EXPECT: send is not durable and state y remains 0 because commit aborts.
+state y = 0
+at 50ms {
+  rewrite y => 9
+  send y to outbox
+  rewrite missing.path => 1
+  commit "must-rollback"
+}
+
+// CASE 6: replay determinism
+// EXPECT: two independent replays over the same journal emit identical sequence:
+//   [(60ms, send, "A"), (60ms, send, "B")]
+// and final `flag` == "done".
+state flag = "start"
+at 60ms {
+  send "A" to outbox
+  send "B" to outbox
+  rewrite flag => "done"
+  commit "replay-order"
+}
+
+// CASE 7: rewrite persistence on successful commit
+// EXPECT: after 70ms commit, read of `counter` at later times yields 5 until superseded.
+state counter = 0
+at 70ms {
+  rewrite counter => 5
+  commit "persist-forward"
+}
+
+// CASE 8: commit metadata does not affect ordering
+// EXPECT: operation order is determined by ordering keys, not commit labels.
+state marker = "init"
+at 80ms {
+  rewrite marker => "first"
+  commit "z-label"
+}
+at 80ms {
+  rewrite marker => "second"
+  commit "a-label"
+}
