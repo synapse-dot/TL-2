@@ -9,7 +9,6 @@ pub enum Literal {
     Bool(bool),
     Null,
 }
-
 #[derive(Debug, Clone)]
 pub enum TimeExpr {
     Now,
@@ -17,9 +16,17 @@ pub enum TimeExpr {
 }
 
 #[derive(Debug, Clone)]
+pub struct FnLiteral {
+    pub params: Vec<String>,
+    pub body: Block,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Literal),
     Ident(String),
+    Call(Box<Expr>, Vec<Expr>),
+    FnLiteral(FnLiteral),
 }
 
 #[derive(Debug, Clone)]
@@ -28,25 +35,29 @@ pub struct StateDecl {
     pub init: Option<Expr>,
     pub span: Span,
 }
-
+#[derive(Debug, Clone)]
+pub struct FnDecl {
+    pub name: String,
+    pub params: Vec<String>,
+    pub body: Block,
+    pub span: Span,
+}
 #[derive(Debug, Clone)]
 pub enum RewriteTarget {
     Var(String),
+    Fn(String),
 }
-
 #[derive(Debug, Clone)]
 pub struct RewriteStmt {
     pub target: RewriteTarget,
     pub value: Expr,
     pub span: Span,
 }
-
 #[derive(Debug, Clone)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
     pub span: Span,
 }
-
 #[derive(Debug, Clone)]
 pub struct AtBlock {
     pub time: TimeExpr,
@@ -57,11 +68,11 @@ pub struct AtBlock {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     State(StateDecl),
+    Fn(FnDecl),
     Rewrite(RewriteStmt),
     At(AtBlock),
     Unsupported,
 }
-
 #[derive(Debug, Clone)]
 pub struct Program {
     pub items: Vec<Stmt>,

@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::cst::{
-    AtBlock as CstAt, CstFile, CstNode, RewriteStmt as CstRewrite, StateDecl as CstState,
+    AtBlock as CstAt, CstFile, CstNode, FnDecl as CstFn, RewriteStmt as CstRewrite,
+    StateDecl as CstState,
 };
 use crate::token::{Keyword, TimeUnit, Token, TokenKind};
 
@@ -13,6 +14,7 @@ pub fn lower_program(cst: &CstFile) -> Program {
 fn lower_node(node: &CstNode) -> Stmt {
     match node {
         CstNode::State(s) => lower_state(s),
+        CstNode::Fn(f) => lower_fn(f),
         CstNode::Rewrite(r) => lower_rewrite(r),
         CstNode::At(a) => lower_at(a),
         _ => Stmt::Unsupported,
@@ -30,7 +32,6 @@ fn lower_state(s: &CstState) -> Stmt {
         .position(|t| t.kind == TokenKind::Eq)
         .and_then(|i| s.tokens.get(i + 1))
         .and_then(lower_expr_token);
-
     Stmt::State(StateDecl {
         name,
         init,
@@ -38,25 +39,103 @@ fn lower_state(s: &CstState) -> Stmt {
     })
 }
 
-fn lower_rewrite(r: &CstRewrite) -> Stmt {
-    let target = match r.tokens.get(1).map(|t| &t.kind) {
-        Some(TokenKind::Identifier(id)) => RewriteTarget::Var(id.clone()),
-        _ => RewriteTarget::Var("<invalid>".to_string()),
+fn lower_fn(f: &CstFn) -> Stmt {
+    let mut it = f.header.iter();
+    let _fn_kw = it.next();
+    let name = match it.next().map(|t| &t.kind) {
+        Some(TokenKind::Identifier(s)) => s.clone(),
+        _ => "<invalid_fn>".into(),
     };
 
-    let value = r
+    let mut params = Vec::new();
+    let mut in_params = false;
+    for t in &f.header {
+        match &t.kind {
+            TokenKind::LParen => in_params = true,
+            TokenKind::RParen => in_params = false,
+            TokenKind::Identifier(s) if in_params => params.push(s.clone()),
+            _ => {}
+        }
+    }
+
+    Stmt::Fn(FnDecl {
+        name,
+        params,
+        body: Block {
+            stmts: f.body.items.iter().map(lower_node).collect(),
+            span: f.body.span,
+        },
+        span: f.span,
+    })
+}
+
+fn lower_rewrite(r: &CstRewrite) -> Stmt {
+    let target_name = match r.tokens.get(1).map(|t| &t.kind) {
+        Some(TokenKind::Identifier(id)) => id.clone(),
+        _ => "<invalid>".to_string(),
+    };
+    let target = if target_name
+        .chars()
+        .next()
+        .map(|c| c.is_lowercase())
+        .unwrap_or(false)
+    {
+        RewriteTarget::Fn(target_name)
+    } else {
+        RewriteTarget::Var(target_name)
+    };
+
+    let value = if let Some(i) = r
         .tokens
         .iter()
         .position(|t| t.kind == TokenKind::FatArrow || t.kind == TokenKind::Eq)
-        .and_then(|i| r.tokens.get(i + 1))
-        .and_then(lower_expr_token)
-        .unwrap_or(Expr::Literal(Literal::Null));
+    {
+        if matches!(
+            r.tokens.get(i + 1).map(|t| &t.kind),
+            Some(TokenKind::LBrace)
+        ) {
+            let body_tokens = collect_brace_block(&r.tokens[i + 1..]);
+            Expr::FnLiteral(FnLiteral {
+                params: Vec::new(),
+                body: Block {
+                    stmts: vec![Stmt::Unsupported],
+                    span: body_tokens.last().map(|t| t.span).unwrap_or(r.span),
+                },
+            })
+        } else {
+            r.tokens
+                .get(i + 1)
+                .and_then(lower_expr_token)
+                .unwrap_or(Expr::Literal(Literal::Null))
+        }
+    } else {
+        Expr::Literal(Literal::Null)
+    };
 
     Stmt::Rewrite(RewriteStmt {
         target,
         value,
         span: r.span,
     })
+}
+
+fn collect_brace_block(tokens: &[Token]) -> Vec<Token> {
+    let mut out = Vec::new();
+    let mut d = 0usize;
+    for t in tokens {
+        out.push(t.clone());
+        match t.kind {
+            TokenKind::LBrace => d += 1,
+            TokenKind::RBrace => {
+                d = d.saturating_sub(1);
+                if d == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 fn lower_at(a: &CstAt) -> Stmt {
@@ -79,7 +158,6 @@ fn parse_time_expr(tokens: &[Token]) -> Option<TimeExpr> {
     {
         return Some(TimeExpr::Now);
     }
-
     let t = tokens
         .iter()
         .find(|t| matches!(t.kind, TokenKind::TimeNumber { .. }))?;

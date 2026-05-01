@@ -29,12 +29,14 @@ fn eval_stmts(
             Stmt::Rewrite(r) => {
                 let name = match &r.target {
                     RewriteTarget::Var(v) => v,
+                    RewriteTarget::Fn(_) => continue,
                 };
                 let v = eval_expr(&r.value, current_ms, store)?;
                 store
                     .set_from(name, current_ms, v, policy)
                     .map_err(EvalError)?;
             }
+            Stmt::Fn(_) => {}
             Stmt::At(at) => {
                 let next = match at.time {
                     TimeExpr::Now => current_ms,
@@ -58,5 +60,6 @@ fn eval_expr(expr: &Expr, current_ms: i64, store: &TimelineStore) -> Result<Valu
             .value_at(name, current_ms)
             .cloned()
             .ok_or_else(|| EvalError(format!("unknown identifier: {name}"))),
+        Expr::Call(_, _) | Expr::FnLiteral(_) => Ok(Value::Null),
     }
 }
