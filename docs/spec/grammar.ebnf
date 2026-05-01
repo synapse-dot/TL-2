@@ -1,0 +1,115 @@
+(* TLH v1.0 grammar - disambiguated command/temporal syntax *)
+
+grammar              = ws , { top_level } , END_OF_INPUT ;
+
+(* ---------- lexical ---------- *)
+letter               = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" |
+                       "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" |
+                       "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" |
+                       "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" | "_" ;
+digit                = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+hex_digit            = digit | "a" | "b" | "c" | "d" | "e" | "f" | "A" | "B" | "C" | "D" | "E" | "F" ;
+
+ident                = letter , { letter | digit | "-" } ;
+number               = ["+" | "-"] , digit , { digit } , [ "." , digit , { digit } ] ;
+string               = '"' , { ? any char except quote/backslash/newline ? | escape } , '"' ;
+escape               = "\\" , ( '"' | "\\" | "n" | "r" | "t" | "u" , hex_digit , hex_digit , hex_digit , hex_digit ) ;
+boolean              = "true" | "false" ;
+
+line_comment         = "//" , { ? any char except newline ? } ;
+block_comment        = "/*" , { ? any char including newline, non-greedy ? } , "*/" ;
+
+nl                   = "\n" | "\r\n" ;
+indent               = "<INDENT>" ;
+dedent               = "<DEDENT>" ;
+ws                   = { " " | "\t" | nl | line_comment | block_comment } ;
+ws1                  = ( " " | "\t" ) , { " " | "\t" } ;
+
+(* ---------- program structure ---------- *)
+top_level            = ws , ( declaration_stmt | process_decl | fn_decl | stmt ) , stmt_end ;
+stmt                 = decorated_stmt | control_stmt | command_stmt | expr_stmt ;
+stmt_end             = ";" | nl | END_OF_INPUT ;
+
+block                = brace_block | indent_block ;
+brace_block          = "{" , ws , { block_item } , ws , "}" ;
+indent_block         = ":" , nl , indent , { block_item } , dedent ;
+block_item           = ws , ( declaration_stmt | stmt ) , stmt_end ;
+
+(* ---------- declarations ---------- *)
+declaration_stmt     = state_decl | binding_decl ;
+state_decl           = "state" , ws1 , ident , [ ws , type_annot ] , [ ws , "=" , ws , expr ] ;
+binding_decl         = ("let" | "const") , ws1 , ident , [ ws , type_annot ] , ws , "=" , ws , expr ;
+type_annot           = ":" , ws , type_expr ;
+type_expr            = ident , { "[" , "]" } ;
+
+fn_decl              = "fn" , ws1 , ident , ws , "(" , ws , [ param_list ] , ws , ")" , [ ws , return_annot ] , ws , block ;
+param_list           = param , { ws , "," , ws , param } ;
+param                = ident , [ ws , type_annot ] , [ ws , "=" , ws , expr ] ;
+return_annot         = "->" , ws , type_expr ;
+
+process_decl         = "process" , ws1 , ident , [ ws , "(" , ws , [ param_list ] , ws , ")" ] , ws , block ;
+
+(* ---------- pre/post decorators ---------- *)
+decorated_stmt       = { decorator , ws } , ( command_stmt | control_stmt | expr_stmt ) ;
+decorator            = ("pre" | "post") , ws1 , expr ;
+
+(* ---------- temporal control statements ---------- *)
+control_stmt         = at_stmt | until_stmt | from_to_stmt ;
+at_stmt              = "at" , ws1 , time_spec , ws , block ;
+until_stmt           = "until" , ws1 , expr , ws , block ;
+from_to_stmt         = "from" , ws1 , time_expr , ws1 , "to" , ws1 , time_expr , ws , block ;
+
+(* ---------- commands ---------- *)
+command_stmt         = rewrite_cmd | morph_cmd | dock_cmd | commit_cmd | yield_cmd |
+                       observe_cmd | spawn_cmd | send_cmd | receive_cmd | grant_cmd | revoke_cmd ;
+
+rewrite_cmd          = "rewrite" , ws1 , target_ref , ws , "=>" , ws , expr ;
+morph_cmd            = "morph" , ws1 , morph_target , [ ws1 , "with" , ws1 , "(" , ws , [ arg_list ] , ws , ")" ] ;
+morph_target         = ident | fn_literal ;
+fn_literal           = "fn" , ws , "(" , ws , [ param_list ] , ws , ")" , ws , block ;
+
+dock_cmd             = "dock" , ws1 , expr , [ ws1 , "at" , ws1 , expr ] ;
+commit_cmd           = "commit" , [ ws1 , expr ] ;
+yield_cmd            = "yield" , [ ws1 , expr ] ;
+observe_cmd          = "observe" , ws1 , expr , [ ws1 , "as" , ws1 , ident ] ;
+spawn_cmd            = "spawn" , ws1 , ident , ws , "(" , ws , [ arg_list ] , ws , ")" ;
+send_cmd             = "send" , ws1 , expr , ws1 , "to" , ws1 , expr ;
+receive_cmd          = "receive" , [ ws1 , receive_pattern ] , ws , "->" , ws , block ;
+grant_cmd            = "grant" , ws1 , permission_ref , ws1 , "to" , ws1 , principal_ref ;
+revoke_cmd           = "revoke" , ws1 , permission_ref , [ ws1 , "from" , ws1 , principal_ref ] ;
+
+receive_pattern      = ident | "*" ;
+permission_ref       = ident | string ;
+principal_ref        = ident | string ;
+target_ref           = ident | path_ref ;
+path_ref             = ident , { "." , ident | "[" , expr , "]" } ;
+arg_list             = expr , { ws , "," , ws , expr } ;
+
+(* ---------- expressions (precedence high -> low) ---------- *)
+expr_stmt            = expr ;
+expr                 = or_expr ;
+or_expr              = and_expr , { ws1 , "or" , ws1 , and_expr } ;
+and_expr             = not_expr , { ws1 , "and" , ws1 , not_expr } ;
+not_expr             = [ "not" , ws1 ] , comparison_expr ;
+comparison_expr      = additive_expr , { ws , comp_op , ws , additive_expr } ;
+comp_op              = "==" | "!=" | "<" | "<=" | ">" | ">=" ;
+additive_expr        = multiplicative_expr , { ws , add_op , ws , multiplicative_expr } ;
+add_op               = "+" | "-" ;
+multiplicative_expr  = unary_expr , { ws , mul_op , ws , unary_expr } ;
+mul_op               = "*" | "/" | "%" ;
+unary_expr           = [ unary_op , ws ] , postfix_expr ;
+unary_op             = "+" | "-" ;
+postfix_expr         = primary_expr , { call_suffix | index_suffix | member_suffix } ;
+call_suffix          = ws , "(" , ws , [ arg_list ] , ws , ")" ;
+index_suffix         = ws , "[" , ws , expr , ws , "]" ;
+member_suffix        = ws , "." , ws , ident ;
+
+primary_expr         = literal | ident | "(" , ws , expr , ws , ")" | duration | time_anchor ;
+literal              = number | string | boolean ;
+
+(* ---------- time ---------- *)
+time_spec            = duration | time_anchor ;
+time_expr            = duration | time_anchor ;
+duration             = number , time_unit ;
+time_unit            = "ms" | "s" | "min" | "h" | "d" ;
+time_anchor          = "t" , ws , "=" , ws , ( number | string | ident ) ;
