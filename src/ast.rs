@@ -71,7 +71,6 @@ pub enum Stmt {
     Fn(FnDecl),
     Rewrite(RewriteStmt),
     At(AtBlock),
-    Yield(Expr),
     Unsupported,
 }
 #[derive(Debug, Clone)]

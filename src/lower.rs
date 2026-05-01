@@ -1,6 +1,6 @@
 use crate::ast::*;
 use crate::cst::{
-    AtBlock as CstAt, CommandStmt, CstFile, CstNode, FnDecl as CstFn, RewriteStmt as CstRewrite,
+    AtBlock as CstAt, CstFile, CstNode, FnDecl as CstFn, RewriteStmt as CstRewrite,
     StateDecl as CstState,
 };
 use crate::token::{Keyword, TimeUnit, Token, TokenKind};
@@ -17,7 +17,6 @@ fn lower_node(node: &CstNode) -> Stmt {
         CstNode::Fn(f) => lower_fn(f),
         CstNode::Rewrite(r) => lower_rewrite(r),
         CstNode::At(a) => lower_at(a),
-        CstNode::Yield(c) => lower_yield(c),
         _ => Stmt::Unsupported,
     }
 }
@@ -31,7 +30,8 @@ fn lower_state(s: &CstState) -> Stmt {
         .tokens
         .iter()
         .position(|t| t.kind == TokenKind::Eq)
-        .and_then(|i| lower_expr_tokens(&s.tokens[i + 1..]));
+        .and_then(|i| s.tokens.get(i + 1))
+        .and_then(lower_expr_token);
     Stmt::State(StateDecl {
         name,
         init,
@@ -74,7 +74,16 @@ fn lower_rewrite(r: &CstRewrite) -> Stmt {
         Some(TokenKind::Identifier(id)) => id.clone(),
         _ => "<invalid>".to_string(),
     };
-    let target = RewriteTarget::Fn(target_name);
+    let target = if target_name
+        .chars()
+        .next()
+        .map(|c| c.is_lowercase())
+        .unwrap_or(false)
+    {
+        RewriteTarget::Fn(target_name)
+    } else {
+        RewriteTarget::Var(target_name)
+    };
 
     let value = if let Some(i) = r
         .tokens
@@ -86,17 +95,18 @@ fn lower_rewrite(r: &CstRewrite) -> Stmt {
             Some(TokenKind::LBrace)
         ) {
             let body_tokens = collect_brace_block(&r.tokens[i + 1..]);
-            let yield_expr =
-                extract_yield_expr(&body_tokens).unwrap_or(Expr::Literal(Literal::Null));
             Expr::FnLiteral(FnLiteral {
                 params: Vec::new(),
                 body: Block {
-                    stmts: vec![Stmt::Yield(yield_expr)],
+                    stmts: vec![Stmt::Unsupported],
                     span: body_tokens.last().map(|t| t.span).unwrap_or(r.span),
                 },
             })
         } else {
-            lower_expr_tokens(&r.tokens[i + 1..]).unwrap_or(Expr::Literal(Literal::Null))
+            r.tokens
+                .get(i + 1)
+                .and_then(lower_expr_token)
+                .unwrap_or(Expr::Literal(Literal::Null))
         }
     } else {
         Expr::Literal(Literal::Null)
@@ -107,18 +117,6 @@ fn lower_rewrite(r: &CstRewrite) -> Stmt {
         value,
         span: r.span,
     })
-}
-
-fn lower_yield(c: &CommandStmt) -> Stmt {
-    let expr = lower_expr_tokens(&c.tokens[1..]).unwrap_or(Expr::Literal(Literal::Null));
-    Stmt::Yield(expr)
-}
-
-fn extract_yield_expr(tokens: &[Token]) -> Option<Expr> {
-    let i = tokens
-        .iter()
-        .position(|t| matches!(t.kind, TokenKind::Keyword(Keyword::Yield)))?;
-    lower_expr_tokens(tokens.get(i + 1..)?)
 }
 
 fn collect_brace_block(tokens: &[Token]) -> Vec<Token> {
@@ -175,34 +173,6 @@ fn parse_time_expr(tokens: &[Token]) -> Option<TimeExpr> {
         return Some(TimeExpr::DurationMs(ms as i64));
     }
     None
-}
-
-fn lower_expr_tokens(tokens: &[Token]) -> Option<Expr> {
-    if tokens.len() >= 3 {
-        if let (TokenKind::Identifier(name), TokenKind::LParen, TokenKind::RParen) =
-            (&tokens[0].kind, &tokens[1].kind, &tokens[2].kind)
-        {
-            return Some(Expr::Call(Box::new(Expr::Ident(name.clone())), Vec::new()));
-        }
-        if let (TokenKind::Identifier(name), TokenKind::LParen) = (&tokens[0].kind, &tokens[1].kind)
-        {
-            let mut args = Vec::new();
-            let mut i = 2usize;
-            while i < tokens.len() {
-                if matches!(tokens[i].kind, TokenKind::RParen) {
-                    break;
-                }
-                if !matches!(tokens[i].kind, TokenKind::Comma) {
-                    if let Some(arg) = lower_expr_token(&tokens[i]) {
-                        args.push(arg);
-                    }
-                }
-                i += 1;
-            }
-            return Some(Expr::Call(Box::new(Expr::Ident(name.clone())), args));
-        }
-    }
-    tokens.first().and_then(lower_expr_token)
 }
 
 fn lower_expr_token(t: &Token) -> Option<Expr> {

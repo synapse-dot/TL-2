@@ -128,6 +128,7 @@ impl<'a> Lexer<'a> {
                     break;
                 }
             }
+
             if self.peek_char() == Some(b'/') && self.peek_next() == Some(b'/') {
                 while let Some(c) = self.peek_char() {
                     self.bump();
@@ -137,6 +138,7 @@ impl<'a> Lexer<'a> {
                 }
                 continue;
             }
+
             if self.peek_char() == Some(b'/') && self.peek_next() == Some(b'*') {
                 let start = self.mark();
                 self.bump();
@@ -148,12 +150,15 @@ impl<'a> Lexer<'a> {
                             self.bump();
                             break;
                         }
-                        Some(_) => self.bump(),
+                        Some(_) => {
+                            self.bump();
+                        }
                         None => return Err(self.err("unterminated block comment", start)),
                     }
                 }
                 continue;
             }
+
             break;
         }
         Ok(())
@@ -169,9 +174,11 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+
         let kind = match_keyword(&ident)
             .map(TokenKind::Keyword)
             .unwrap_or(TokenKind::Identifier(ident));
+
         self.finish(start, kind)
     }
 
@@ -185,6 +192,7 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+
         let snapshot = (self.pos, self.line, self.col);
         if let Some(unit) = self.match_time_unit() {
             return self.finish(
@@ -195,9 +203,8 @@ impl<'a> Lexer<'a> {
                 },
             );
         }
-        self.pos = snapshot.0;
-        self.line = snapshot.1;
-        self.col = snapshot.2;
+        (self.pos, self.line, self.col) = snapshot;
+
         self.finish(start, TokenKind::Number(number))
     }
 
@@ -241,23 +248,28 @@ impl<'a> Lexer<'a> {
 
     fn match_time_unit(&mut self) -> Option<TimeUnit> {
         if self.consume_bytes(b"ms") {
-            Some(TimeUnit::Ms)
-        } else if self.consume_bytes(b"min") {
-            Some(TimeUnit::Min)
-        } else if self.consume_bytes(b"s") {
-            Some(TimeUnit::S)
-        } else if self.consume_bytes(b"h") {
-            Some(TimeUnit::H)
-        } else if self.consume_bytes(b"d") {
-            Some(TimeUnit::D)
-        } else {
-            None
+            return Some(TimeUnit::Ms);
         }
+        if self.consume_bytes(b"min") {
+            return Some(TimeUnit::Min);
+        }
+        if self.consume_bytes(b"s") {
+            return Some(TimeUnit::S);
+        }
+        if self.consume_bytes(b"h") {
+            return Some(TimeUnit::H);
+        }
+        if self.consume_bytes(b"d") {
+            return Some(TimeUnit::D);
+        }
+        None
     }
+
     fn simple(&mut self, kind: TokenKind, start: Span) -> Token {
         self.bump();
         self.finish(start, kind)
     }
+
     fn finish(&self, start: Span, kind: TokenKind) -> Token {
         Token {
             kind,
@@ -269,6 +281,7 @@ impl<'a> Lexer<'a> {
             },
         }
     }
+
     fn err(&self, message: &str, start: Span) -> LexError {
         LexError {
             message: message.to_string(),
@@ -280,6 +293,7 @@ impl<'a> Lexer<'a> {
             },
         }
     }
+
     fn consume_bytes(&mut self, bytes: &[u8]) -> bool {
         if self.src.get(self.pos..self.pos + bytes.len()) == Some(bytes) {
             for _ in 0..bytes.len() {
@@ -290,6 +304,7 @@ impl<'a> Lexer<'a> {
             false
         }
     }
+
     fn match_char(&mut self, expected: u8) -> bool {
         if self.peek_char() == Some(expected) {
             self.bump();
@@ -298,6 +313,7 @@ impl<'a> Lexer<'a> {
             false
         }
     }
+
     fn mark(&self) -> Span {
         Span {
             start: self.pos,
@@ -306,6 +322,7 @@ impl<'a> Lexer<'a> {
             column: self.col,
         }
     }
+
     fn bump(&mut self) {
         if let Some(c) = self.peek_char() {
             self.pos += 1;
@@ -317,12 +334,15 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+
     fn peek_char(&self) -> Option<u8> {
         self.src.get(self.pos).copied()
     }
+
     fn peek_next(&self) -> Option<u8> {
         self.src.get(self.pos + 1).copied()
     }
+
     fn is_eof(&self) -> bool {
         self.pos >= self.src.len()
     }
@@ -331,9 +351,11 @@ impl<'a> Lexer<'a> {
 fn is_ident_start(c: u8) -> bool {
     c.is_ascii_alphabetic() || c == b'_'
 }
+
 fn is_ident_continue(c: u8) -> bool {
     is_ident_start(c) || c.is_ascii_digit()
 }
+
 fn match_keyword(s: &str) -> Option<Keyword> {
     Some(match s {
         "state" => Keyword::State,
