@@ -1,25 +1,33 @@
 mod cst;
+mod engine;
 mod lexer;
 mod parser;
 mod token;
 
 use std::{env, fs, process};
 
+use engine::eval::eval_program;
 use lexer::lex;
 use parser::parse;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
-        eprintln!("usage: tl2 [--dump-tokens|--dump-cst] <file.tlh>");
+        eprintln!("usage: tl2 [--dump-tokens|--dump-cst] [--eval-at <ms>] <file.tlh>");
         process::exit(2);
     }
 
     let dump_cst = args.iter().any(|a| a == "--dump-cst");
-    let dump_tokens = args.iter().any(|a| a == "--dump-tokens") || !dump_cst;
+    let dump_tokens = args.iter().any(|a| a == "--dump-tokens")
+        || (!dump_cst && !args.iter().any(|a| a == "--eval-at"));
+    let eval_at = args
+        .windows(2)
+        .find(|w| w[0] == "--eval-at")
+        .and_then(|w| w[1].parse::<i64>().ok());
+
     let path = args
         .iter()
-        .find(|a| !a.starts_with("--"))
+        .find(|a| !a.starts_with("--") && a.parse::<i64>().is_err())
         .unwrap_or_else(|| {
             eprintln!("missing input file");
             process::exit(2);
@@ -41,14 +49,38 @@ fn main() {
         }
     };
 
-    if dump_cst {
+    let tree = if dump_cst || eval_at.is_some() {
         match parse(&tokens) {
-            Ok(tree) => println!("{:#?}", tree),
+            Ok(tree) => {
+                if dump_cst {
+                    println!("{:#?}", tree);
+                }
+                Some(tree)
+            }
             Err(err) => {
                 eprintln!(
                     "parse error at {}:{} (bytes {}..{}): {}",
                     err.span.line, err.span.column, err.span.start, err.span.end, err.message
                 );
+                process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+
+    if let Some(t_ms) = eval_at {
+        let program = tree.as_ref().expect("parser tree expected");
+        match eval_program(program) {
+            Ok(store) => {
+                for (name, _) in &store.vars {
+                    if let Some(v) = store.value_at(name, t_ms) {
+                        println!("{} @ {}ms = {:?}", name, t_ms, v);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("eval error: {}", err.0);
                 process::exit(1);
             }
         }
