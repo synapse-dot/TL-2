@@ -6,13 +6,12 @@ mod lower;
 mod parser;
 mod token;
 
-use std::{env, fs, process};
-
 use engine::eval::eval_program;
 use engine::timeline::ConflictPolicy;
 use lexer::lex;
 use lower::lower_program;
 use parser::parse;
+use std::{env, fs, process};
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -30,14 +29,16 @@ fn main() {
         .windows(2)
         .find(|w| w[0] == "--eval-at")
         .and_then(|w| w[1].parse::<i64>().ok());
-
     let policy = args
         .windows(2)
         .find(|w| w[0] == "--conflict-policy")
         .map(|w| w[1].as_str())
-        .map(|p| match p {
-            "error" => ConflictPolicy::Error,
-            _ => ConflictPolicy::LastWriteWins,
+        .map(|p| {
+            if p == "error" {
+                ConflictPolicy::Error
+            } else {
+                ConflictPolicy::LastWriteWins
+            }
         })
         .unwrap_or(ConflictPolicy::LastWriteWins);
     let path = args
@@ -52,7 +53,6 @@ fn main() {
         eprintln!("failed to read {path}: {err}");
         process::exit(1);
     });
-
     let tokens = match lex(&input) {
         Ok(tokens) => tokens,
         Err(err) => {
