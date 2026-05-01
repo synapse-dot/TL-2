@@ -1,0 +1,85 @@
+// declarations
+state mode: Status = "idle"
+state retries = 0
+let threshold: Number = 5
+const label = "alpha"
+
+// function declaration (brace block)
+fn sum(a: Number, b: Number = 1) -> Number {
+  yield a + b
+}
+
+// process declaration (indent block)
+process ingest(stream):
+<INDENT>
+  observe stream as source
+  spawn worker(source)
+  send "ready" to source
+<DEDENT>
+
+// temporal control
+at 500ms {
+  commit "timer fired"
+}
+
+at t = checkpoint:
+<INDENT>
+  dock agent at node_1
+<DEDENT>
+
+until not done and retries < 3 {
+  rewrite plan.current => "retry"
+}
+
+from t = start to t = end {
+  observe counter
+}
+
+// pre/post decorators attach to following statement
+pre authorized post complete commit "secured transition"
+pre can_send send "payload" to outbox
+
+// command forms
+rewrite state.path[0] => "patched"
+morph next_profile
+morph increment_counter with (1)
+morph fn (x) { yield x + 1 }
+dock vessel
+dock vessel at berth_3
+commit
+commit "snapshot"
+yield
+yield result.value
+observe queue.items[2] as item
+spawn run_task(item, 5min)
+send item.payload to channel.main
+receive -> {
+  commit "received anonymous"
+}
+receive event -> {
+  send event to audit
+}
+receive * -> {
+  commit "wildcard received"
+}
+grant admin to "ops"
+revoke admin
+revoke admin from "ops"
+
+// operator precedence / associativity
+not a and b or c
+(a + b) * c % 2
+x - y - z
+score >= 10 and score < 20
+elapsed + 1h / 2min
+
+// expression context
+(1 + 2) * 3
+fn_call(1, 2, x.y[0])
+t = checkpoint
+
+// declaration vs expression vs command context separation
+state window_open = true
+state start_at = t = boot
+send t = checkpoint to bus
+rewrite target => t = "phase-2"
