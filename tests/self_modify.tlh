@@ -2,13 +2,13 @@ fn policy() {
   yield "explore"
 }
 
-let initial = policy();
-debug(initial);
+state initial = policy()
+state _ = debug(initial)
 
 at 10s {
   rewrite policy => {
     yield "exploit"
   }
-  let later = policy();
-  debug(later);
+  state later = policy()
+  state _ = debug(later)
 }

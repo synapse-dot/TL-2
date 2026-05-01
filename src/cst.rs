@@ -16,14 +16,6 @@ pub enum CstNode {
     Dock(DockBlock),
     Rewrite(RewriteStmt),
     Commit(CommitStmt),
-    Send(CommandStmt),
-    Receive(CommandStmt),
-    Yield(CommandStmt),
-    Observe(CommandStmt),
-    Morph(CommandStmt),
-    Spawn(CommandStmt),
-    Grant(CommandStmt),
-    Revoke(CommandStmt),
     Expr(ExprStmt),
 }
 
@@ -75,12 +67,6 @@ pub struct CommitStmt {
 
 #[derive(Debug, Clone)]
 pub struct ExprStmt {
-    pub span: Span,
-    pub tokens: Vec<Token>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CommandStmt {
     pub span: Span,
     pub tokens: Vec<Token>,
 }

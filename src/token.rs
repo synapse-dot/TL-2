@@ -21,7 +21,6 @@ pub enum Keyword {
     If,
     Else,
     Loop,
-    Let,
     While,
     For,
     In,

@@ -68,12 +68,9 @@ pub struct AtBlock {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     State(StateDecl),
-    Let(String, Expr),
-    Expr(Expr),
     Fn(FnDecl),
     Rewrite(RewriteStmt),
     At(AtBlock),
-    Yield(Expr),
     Unsupported,
 }
 #[derive(Debug, Clone)]
