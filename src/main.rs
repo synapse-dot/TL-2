@@ -1,6 +1,8 @@
+mod ast;
 mod cst;
 mod engine;
 mod lexer;
+mod lower;
 mod parser;
 mod token;
 
@@ -9,6 +11,7 @@ use std::{env, fs, process};
 use engine::eval::eval_program;
 use engine::timeline::ConflictPolicy;
 use lexer::lex;
+use lower::lower_program;
 use parser::parse;
 
 fn main() {
@@ -82,8 +85,9 @@ fn main() {
     };
 
     if let Some(t_ms) = eval_at {
-        let program = tree.as_ref().expect("parser tree expected");
-        match eval_program(program, policy) {
+        let cst = tree.as_ref().expect("parser tree expected");
+        let program = lower_program(cst);
+        match eval_program(&program, policy) {
             Ok(store) => {
                 for (name, _) in &store.vars {
                     if let Some(v) = store.value_at(name, t_ms) {
