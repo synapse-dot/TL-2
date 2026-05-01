@@ -1,13 +1,13 @@
 use crate::cst::{AtBlock, CstFile, CstNode, RewriteStmt, StateDecl};
-use crate::engine::timeline::{TimelineStore, Value};
+use crate::engine::timeline::{ConflictPolicy, TimelineStore, Value};
 use crate::token::{Keyword, TimeUnit, Token, TokenKind};
 
 #[derive(Debug)]
 pub struct EvalError(pub String);
 
-pub fn eval_program(cst: &CstFile) -> Result<TimelineStore, EvalError> {
+pub fn eval_program(cst: &CstFile, policy: ConflictPolicy) -> Result<TimelineStore, EvalError> {
     let mut store = TimelineStore::default();
-    eval_nodes(&cst.items, 0, &mut store)?;
+    eval_nodes(&cst.items, 0, &mut store, policy)?;
     Ok(store)
 }
 
@@ -15,35 +15,55 @@ fn eval_nodes(
     nodes: &[CstNode],
     base_time: i64,
     store: &mut TimelineStore,
+    policy: ConflictPolicy,
 ) -> Result<(), EvalError> {
     for node in nodes {
         match node {
-            CstNode::State(s) => eval_state(s, base_time, store)?,
-            CstNode::Rewrite(r) => eval_rewrite(r, base_time, store)?,
-            CstNode::At(a) => eval_at(a, base_time, store)?,
+            CstNode::State(s) => eval_state(s, base_time, store, policy)?,
+            CstNode::Rewrite(r) => eval_rewrite(r, base_time, store, policy)?,
+            CstNode::At(a) => eval_at(a, base_time, store, policy)?,
             _ => {}
         }
     }
     Ok(())
 }
 
-fn eval_state(s: &StateDecl, at_ms: i64, store: &mut TimelineStore) -> Result<(), EvalError> {
+fn eval_state(
+    s: &StateDecl,
+    at_ms: i64,
+    store: &mut TimelineStore,
+    policy: ConflictPolicy,
+) -> Result<(), EvalError> {
     if let Some((name, value)) = parse_assignment(&s.tokens) {
-        store.set_from(&name, at_ms, value);
+        store
+            .set_from(&name, at_ms, value, policy)
+            .map_err(EvalError)?;
     }
     Ok(())
 }
 
-fn eval_rewrite(r: &RewriteStmt, at_ms: i64, store: &mut TimelineStore) -> Result<(), EvalError> {
+fn eval_rewrite(
+    r: &RewriteStmt,
+    at_ms: i64,
+    store: &mut TimelineStore,
+    policy: ConflictPolicy,
+) -> Result<(), EvalError> {
     if let Some((name, value)) = parse_rewrite(&r.tokens) {
-        store.set_from(&name, at_ms, value);
+        store
+            .set_from(&name, at_ms, value, policy)
+            .map_err(EvalError)?;
     }
     Ok(())
 }
 
-fn eval_at(a: &AtBlock, base_time: i64, store: &mut TimelineStore) -> Result<(), EvalError> {
+fn eval_at(
+    a: &AtBlock,
+    base_time: i64,
+    store: &mut TimelineStore,
+    policy: ConflictPolicy,
+) -> Result<(), EvalError> {
     let dt = parse_time_offset(&a.header).unwrap_or(0);
-    eval_nodes(&a.body.items, base_time + dt, store)
+    eval_nodes(&a.body.items, base_time + dt, store, policy)
 }
 
 fn parse_assignment(tokens: &[Token]) -> Option<(String, Value)> {

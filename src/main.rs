@@ -7,13 +7,16 @@ mod token;
 use std::{env, fs, process};
 
 use engine::eval::eval_program;
+use engine::timeline::ConflictPolicy;
 use lexer::lex;
 use parser::parse;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
-        eprintln!("usage: tl2 [--dump-tokens|--dump-cst] [--eval-at <ms>] <file.tlh>");
+        eprintln!(
+            "usage: tl2 [--dump-tokens|--dump-cst] [--eval-at <ms>] [--conflict-policy lww|error] <file.tlh>"
+        );
         process::exit(2);
     }
 
@@ -25,9 +28,18 @@ fn main() {
         .find(|w| w[0] == "--eval-at")
         .and_then(|w| w[1].parse::<i64>().ok());
 
+    let policy = args
+        .windows(2)
+        .find(|w| w[0] == "--conflict-policy")
+        .map(|w| w[1].as_str())
+        .map(|p| match p {
+            "error" => ConflictPolicy::Error,
+            _ => ConflictPolicy::LastWriteWins,
+        })
+        .unwrap_or(ConflictPolicy::LastWriteWins);
     let path = args
         .iter()
-        .find(|a| !a.starts_with("--") && a.parse::<i64>().is_err())
+        .find(|a| a.ends_with(".tlh"))
         .unwrap_or_else(|| {
             eprintln!("missing input file");
             process::exit(2);
@@ -71,7 +83,7 @@ fn main() {
 
     if let Some(t_ms) = eval_at {
         let program = tree.as_ref().expect("parser tree expected");
-        match eval_program(program) {
+        match eval_program(program, policy) {
             Ok(store) => {
                 for (name, _) in &store.vars {
                     if let Some(v) = store.value_at(name, t_ms) {
