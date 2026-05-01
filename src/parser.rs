@@ -164,6 +164,7 @@ impl<'a> Parser<'a> {
         out.extend(self.take_until_stmt_end());
         out
     }
+
     fn take_until_stmt_end(&mut self) -> Vec<Token> {
         let mut out = Vec::new();
         let mut paren_depth = 0usize;
